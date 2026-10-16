@@ -1,0 +1,61 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (jangan push kredensial, simpan template di .env.example)
+.env*
+!.env.example
+
+# SQLite Database & Storage (PENTING: Jangan di-push agar data server tidak tertimpa saat update)
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files (foto siswa, logo, BAP di server tidak boleh tertimpa)
+/public/uploads/**
+!/public/uploads/
+!/public/uploads/**/
+!/public/uploads/**/.gitkeep
+
+# AI Agent / Editor directories
+.agents/
+.claude/
+.cursor/
+.devin/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

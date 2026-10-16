@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  nama           String
+  email_username String    @unique
+  password       String
+  role           String    @default("SISWA") // ADMIN, GURU, SISWA
+  sekolahId      String?
+  tingkatKelasId String?
+  jurusanId      String?
+  rombelId       String?
+  isLogin        Boolean   @default(false)
+  lastLogin      DateTime?
+  sesi           Int       @default(1)
+  ruang          String    @default("Ruang 1")
+  gelombang      Int       @default(1)
+  sesiHari1      Int       @default(1)
+  sesiHari2      Int       @default(1)
+  sesiHari3      Int       @default(1)
+  sesiHari4      Int       @default(1)
+  foto           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sekolah      Sekolah?      @relation(fields: [sekolahId], references: [id], onDelete: Cascade)
+  tingkatKelas TingkatKelas? @relation(fields: [tingkatKelasId], references: [id], onDelete: Cascade)
+  jurusan      Jurusan?      @relation(fields: [jurusanId], references: [id], onDelete: Cascade)
+  rombel       Rombel?       @relation(fields: [rombelId], references: [id], onDelete: SetNull)
+  hasilUjian   HasilUjian[]
+}
+
+model Sekolah {
+  id        String   @id @default(cuid())
+  nama      String
+  alamat    String?
+  users     User[]
+  createdAt DateTime @default(now())
+}
+
+model TingkatKelas {
+  id        String          @id @default(cuid())
+  level     Int             // 1-12
+  tipe      String          // SD, SMP, SMA, SMK
+  users     User[]
+  mapels    MataPelajaran[]
+  rombels   Rombel[]
+  createdAt DateTime        @default(now())
+}
+
+model Jurusan {
+  id           String          @id @default(cuid())
+  nama_jurusan String          // IPA, IPS, TKJ, RPL, dll
+  users        User[]
+  mapels       MataPelajaran[]
+  rombels      Rombel[]
+  createdAt    DateTime        @default(now())
+}
+
+model Rombel {
+  id             String        @id @default(cuid())
+  tingkatKelasId String
+  jurusanId      String?
+  nomorKelas     String        // 1, 2, A, B, dst
+
+  tingkatKelas   TingkatKelas  @relation(fields: [tingkatKelasId], references: [id], onDelete: Cascade)
+  jurusan        Jurusan?      @relation(fields: [jurusanId], references: [id], onDelete: Cascade)
+  users          User[]
+  createdAt      DateTime      @default(now())
+
+  @@unique([tingkatKelasId, jurusanId, nomorKelas])
+}
+
+model MataPelajaran {
+  id             String       @id @default(cuid())
+  nama           String
+  tingkatKelasId String
+  jurusanId      String
+  
+  tingkatKelas   TingkatKelas @relation(fields: [tingkatKelasId], references: [id], onDelete: Cascade)
+  jurusan        Jurusan      @relation(fields: [jurusanId], references: [id], onDelete: Cascade)
+  
+  ujians         Ujian[]
+}
+
+model Ujian {
+  id              String        @id @default(cuid())
+  judul           String
+  mataPelajaranId String
+  kkm             Float         @default(75.0)
+  durasiMenit     Int           @default(90)
+  acakSoal        Boolean       @default(false)
+  acakOpsi        Boolean       @default(false)
+  
+  mataPelajaran   MataPelajaran @relation(fields: [mataPelajaranId], references: [id], onDelete: Cascade)
+  soals           Soal[]
+  sesiUjians      SesiUjian[]
+  
+  createdAt       DateTime      @default(now())
+}
+
+model Soal {
+  id            String   @id @default(cuid())
+  ujianId       String
+  tipeSoal      String   @default("PG") // PG, PG_KOMPLEKS, ESSAY
+  kontenSoal    String   // sqlite handles long text as string natively
+  opsiJawaban   String?  // Store JSON as string: Array of objects {id, text, isCorrect}
+  kunciJawaban  String?  // For Essay reference
+  bobot         Float    @default(1.0)
+  
+  ujian         Ujian    @relation(fields: [ujianId], references: [id], onDelete: Cascade)
+}
+
+model SesiUjian {
+  id          String       @id @default(cuid())
+  ujianId     String
+  waktuMulai  DateTime
+  waktuSelesai DateTime
+  status      String       @default("TERJADWAL") // TERJADWAL, AKTIF, SELESAI
+  token       String?      @unique // <-- NEW FIELD FOR DYNAMIC TOKEN
+  sesi        Int          @default(1)
+  ruang       String       @default("Ruang 1")
+  gelombang   Int          @default(1)
+  hariKe      Int          @default(1)
+  arsipBap    String?      // <-- NEW FIELD FOR BAP ARSIP
+  
+  ujian       Ujian        @relation(fields: [ujianId], references: [id], onDelete: Cascade)
+  hasilUjian  HasilUjian[]
+}
+
+model HasilUjian {
+  id             String    @id @default(cuid())
+  siswaId        String
+  sesiUjianId    String
+  nilaiAkhir     Float     @default(0)
+  detailJawaban  String    // Store JSON as string: Student's answers {soalId: jawaban}
+  status         String    @default("SELESAI") // MENGERJAKAN, SELESAI
+  tambahanMenit  Int       @default(0) // Kompensasi tambahan waktu proktor (menit)
+  
+  siswa          User      @relation(fields: [siswaId], references: [id], onDelete: Cascade)
+  sesiUjian      SesiUjian @relation(fields: [sesiUjianId], references: [id], onDelete: Cascade)
+  waktuKumpul    DateTime  @default(now())
+}
+
+model Pengaturan {
+  kunci String @id
+  nilai String
+}
