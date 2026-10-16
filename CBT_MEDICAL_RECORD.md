@@ -2,7 +2,8 @@
 
 Dokumen ini berfungsi sebagai **Rekam Medis & Arsitektur Tunggal** dari aplikasi **LMS-7TKA-CBT**. Setiap pengembang maupun AI Assistant yang melanjutkan pengembangan proyek ini dapat dengan cepat memahami alur program, arsitektur database, keputusan desain, dan fitur-fitur yang sudah diimplementasikan tanpa harus membaca ulang seluruh kode.
 
-**Terakhir Diperbarui:** 29 September 2026 (Status: Stabil & Terverifikasi)
+**Terakhir Diperbarui:** 16 Oktober 2026 (Status: Stabil, Terverifikasi & Terintegrasi GitHub / LXC Proxmox)  
+**Repositori GitHub:** [https://github.com/kajurtkjsmkbp-hub/CBT-TKA-PART3](https://github.com/kajurtkjsmkbp-hub/CBT-TKA-PART3) (Branch: `main`)
 
 ---
 
@@ -13,9 +14,11 @@ Dokumen ini berfungsi sebagai **Rekam Medis & Arsitektur Tunggal** dari aplikasi
 - **Styling:** Tailwind CSS murni (desain profesional, responsif, print-friendly `@media print`)
 - **State & Autentikasi:**
   - Server-side Session: Cookies bawaan Next.js (`cbt_session` bernilai `"ADMIN" | "GURU" | "SISWA"` dan `cbt_user_id`)
+  - Hardcoded Fallback Admin: `admin` / `admin` untuk kemudahan inisialisasi awal server
   - Single Login Enforcement: Field `isLogin` Boolean pada tabel `User`
   - Anti-Cheat & Local Persistence: `localStorage` (`cbt_peringatan`, `cbt_blocked`, `cbt_token`, `cbt_answers`, `cbt_ragu`, `cbt_shuffled_soal`, `cbt_exam_state`)
 - **Excel Engine:** `xlsx` (SheetJS) untuk ekspor dan impor matriks sesi / bank soal / analisis butir soal
+- **Production Stack (LXC Proxmox):** Node.js 20 LTS, PM2 Process Manager, Nginx Reverse Proxy (Port 80 -> 3000)
 - **Local Dev Server:** Dijalankan via `npm run dev` pada `http://localhost:3000`
 
 ---
@@ -46,6 +49,7 @@ Dokumen ini berfungsi sebagai **Rekam Medis & Arsitektur Tunggal** dari aplikasi
 - `/cbt`: Antarmuka pengerjaan ujian siswa. Bekerja sebagai State Machine: `TOKEN` → `RUNNING` → `FINISHED`. Juga menangani state darurat `BLOCKED` (kecurangan tab-switch) dan `COMPLETED` (ujian sudah pernah dikerjakan).
 - `/api/logout`: Endpoint penghapusan cookies dan reset `isLogin = false` pada database.
 - `/api/cbt-sync`: Endpoint sinkronisasi jawaban siswa otomatis secara berkala (debounced 2 detik).
+- `/api/seed`: Endpoint pengisian data awal/demo jika diperlukan di server baru.
 
 ### 3.2 Dashboard Administrasi (`/admin/*`)
 - `/admin/siswa`: Manajemen master siswa, upload foto siswa, import siswa Excel, dan pintasan cetak kartu.
@@ -125,6 +129,11 @@ Di dalam `checkTokenAndFetchExam`:
    - Soal yang diunggah via file teks (`.txt`) menyimpan status kebenaran pada properti `isCorrect: true` di dalam array JSON `opsiJawaban`. Fungsi penilaian di `submitExamResult` selalu mengecek kedua kemungkinan (`kunciJawaban` string eksplisit atau `isCorrect` dalam `opsiJawaban`).
 4. **Determinisme Query Soal:**
    - Semua pemanggilan soal melalui Prisma **wajib** menyertakan klausul `orderBy: { id: "asc" }` untuk menjamin indeks nomor soal di sisi klien dan server selalu identik 100%.
+5. **Proteksi Isolasi Data Produksi (Zero-Data-Loss Deployment):**
+   - Database SQLite (`prisma/*.db`, `*.db-wal`, `*.db-shm`), file upload (`public/uploads/**`), serta file environment (`.env`) dikecualikan dari pelacakan Git via `.gitignore`.
+   - Hal ini menjamin bahwa setiap kali dilakukan `git pull` dari GitHub, data server lokal/proctoring tidak akan pernah tertimpa atau hilang.
+6. **Otomasi Pembaruan Sistem di Server:**
+   - Disediakan script shell `update.sh` di root repository untuk menjalankan siklus update aman: `git pull` $\rightarrow$ `npm install` $\rightarrow$ `npx prisma db push` $\rightarrow$ `npm run build` $\rightarrow$ `pm2 restart cbt-app`.
 
 ---
 
@@ -138,10 +147,12 @@ Di dalam `checkTokenAndFetchExam`:
 | **MED-04** | Nomor soal 1-10 di grid kanan tidak dapat diklik. | Header `sticky` dan container soal HTML menimpa area klik secara tak kasat mata. | Dihapus `sticky`, ditambahkan CSS containment (`contain: content`), serta event delegation pada nomor soal. |
 | **MED-05** | Layar ujian kembali ke form token saat F5 setelah menit ke-15. | Validasi token 15 menit dieksekusi sebelum pengecekan siswa yang sudah `MENGERJAKAN`. | Ditambahkan prioritas bypass validasi waktu token jika siswa sudah memiliki record `MENGERJAKAN`. |
 | **MED-06** | Mismatch rotasi sesi antar hari pada jadwal ujian bergelombang. | Siswa hanya memiliki 1 field sesi tunggal untuk seluruh rangkaian hari ujian. | Ditambahkan field `sesiHari1`, `sesiHari2`, `sesiHari3`, `sesiHari4` serta token dinamis berbasis `hariKe`. |
+| **MED-07** | Build failure pada tahap compile TypeScript (`prisma.config.ts TS2307`). | File `prisma.config.ts` tidak kompatibel dengan Prisma 5, dan `postinstall` salah memanggil `prisma skills sync`. | Menghapus `prisma.config.ts`, mengganti `postinstall` menjadi `prisma generate`, memverifikasi build Next.js (22/22 route sukses). |
+| **MED-08** | Potensi konflik dan tertindihnya database server/foto siswa saat update Git. | File `.db` dan upload media berpotensi masuk ke staging Git jika `.gitignore` tidak spesifik. | Menambahkan aturan isolasi ketat di `.gitignore` untuk file `.db`, `.sqlite`, dan folder `public/uploads/**` (menjaga `.gitkeep`), serta menyertakan script `update.sh`. |
 
 ---
 
-## 7. Panduan Pemeliharaan & Perintah Terminal
+## 7. Panduan Pemeliharaan, Deployment & Perintah Terminal
 
 ### Menjalankan Aplikasi Lokal
 ```powershell
@@ -155,7 +166,23 @@ npx prisma db push --accept-data-loss
 npx prisma generate
 ```
 
-### Format Dokumen & Backup
-- Database SQLite lokal berada di `prisma/dev.db`.
-- Gambar dan logo sekolah disimpan di `public/uploads/`.
-- File BAP, Presensi, dan Kartu Meja siap cetak langsung melalui browser dengan orientasi Portrait/Landscape sesuai standar masing-masing rute.
+### Deployment & Update di LXC Proxmox
+- **Instalasi Awal:**
+  ```bash
+  git clone https://github.com/kajurtkjsmkbp-hub/CBT-TKA-PART3.git /var/www/cbt-app
+  cd /var/www/cbt-app
+  cp .env.example .env
+  npm install
+  npx prisma db push
+  npm run build
+  pm2 start npm --name "cbt-app" -- start
+  ```
+- **Update Aman Tanpa Menimpa Data:**
+  ```bash
+  cd /var/www/cbt-app
+  ./update.sh
+  ```
+- **Backup Cepat Database:**
+  ```bash
+  cp prisma/dev.db /root/backup_$(date +%Y%m%d_%H%M%S).db
+  ```
